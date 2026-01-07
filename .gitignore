@@ -1,0 +1,74 @@
+# === OS specific files ===
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# === Build & Dependencies ===
+target/
+pom.xml.tag
+pom.xml.releaseBackup
+pom.xml.versionsBackup
+pom.xml.next
+release.properties
+dependency-reduced-pom.xml
+buildNumber.properties
+.mvn/timing.properties
+# Avoid ignoring the wrapper jar if you want it versioned (standard in Spring Boot)
+# !.mvn/wrapper/maven-wrapper.jar
+
+# === Java & Logs ===
+*.class
+*.log
+*.ctxt
+*.war
+*.ear
+*.zip
+*.tar.gz
+*.rar
+
+# === IntelliJ IDEA ===
+.idea/
+*.iws
+*.iml
+*.ipr
+out/
+gen/
+
+# === VS Code ===
+.vscode/
+.history/
+*.code-workspace
+
+# === Secrets & Environment ===
+.env
+.env.local
+.env.*.local
+*.p12
+*.jks
+*.key
+*.pem
+
+# === Docker ===
+.docker/
+docker-compose.override.yml
+
+# === Eclipse ===
+.metadata/
+bin/
+tmp/
+*.tmp
+*.bak
+*.swp
+*~.nib
+local.properties
+.settings/
+.classpath
+.project
+.factorypath
+
+# === Local Log files ===
+app.log

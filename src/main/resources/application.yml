@@ -1,0 +1,29 @@
+r2:
+  endpoint: ${R2_ENDPOINT:https://YOUR_ACCOUNT_ID.r2.cloudflarestorage.com}
+  bucket: ${R2_BUCKET:my-app-storage}
+  access-key: ${R2_ACCESS_KEY:YOUR_ACCESS_KEY}
+  secret-key: ${R2_SECRET_KEY:YOUR_SECRET_KEY}
+
+spring:
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5433/r2vault}
+    username: ${DB_USERNAME:user}
+    password: ${DB_PASSWORD:password}
+    driver-class-name: org.postgresql.Driver
+  jpa:
+    hibernate:
+      ddl-auto: update # Note: Use 'validate' in production
+    show-sql: false
+    properties:
+      hibernate:
+        format_sql: true
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+  servlet:
+    multipart:
+      max-file-size: 100MB
+      max-request-size: 100MB
+
+jwt:
+  secret: ${JWT_SECRET:9a4f4345e5d1b157c03aba07320f3bd365a2571dd8b2f1e604735c0a37397e0b}
+  expiration: ${JWT_EXPIRATION:900000} # 15 minutes
+  refresh-expiration: ${JWT_REFRESH_EXPIRATION:604800000} # 7 days

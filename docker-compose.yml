@@ -1,0 +1,27 @@
+services:
+  app:
+    build: . # Compiles from local source code
+    # image: mxverse/r2vault:latest # [FUTURE] Pull pre-built image from registry
+    container_name: r2vault-app
+    ports:
+      - "8080:8080"
+    environment:
+      - DB_URL=${DB_URL:-jdbc:postgresql://db:5432/r2vault}
+    env_file:
+      - .env
+
+  db:
+    image: postgres:15
+    profiles: [ "postgres" ] # Only starts if specifically requested
+    container_name: r2vault-db
+    environment:
+      - POSTGRES_USER=${DB_USERNAME:-admin}
+      - POSTGRES_PASSWORD=${DB_PASSWORD:-root}
+      - POSTGRES_DB=r2vault
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+volumes:
+  postgres_data:
