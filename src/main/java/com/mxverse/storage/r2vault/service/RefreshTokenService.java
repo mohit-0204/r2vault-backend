@@ -39,15 +39,14 @@ public class RefreshTokenService {
         User user = userRepository.findByUsername(username)
                 .orElseThrow(() -> new RuntimeException("User not found"));
 
-        // Revoke any existing token for this user (industry practice for
-        // single-session-ish feel)
-        refreshTokenRepository.deleteByUser(user);
+        // If user already has a token, we update it instead of deleting to avoid
+        // unique constraint issues in the same transaction
+        RefreshToken refreshToken = refreshTokenRepository.findByUser(user)
+                .orElse(new RefreshToken());
 
-        RefreshToken refreshToken = RefreshToken.builder()
-                .user(user)
-                .token(UUID.randomUUID().toString())
-                .expiryDate(Instant.now().plusMillis(refreshTokenExpirationMs))
-                .build();
+        refreshToken.setUser(user);
+        refreshToken.setToken(UUID.randomUUID().toString());
+        refreshToken.setExpiryDate(Instant.now().plusMillis(refreshTokenExpirationMs));
 
         return refreshTokenRepository.save(refreshToken);
     }
