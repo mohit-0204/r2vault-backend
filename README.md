@@ -80,6 +80,16 @@ This system is designed with a "Security-First" approach, leveraging modern Java
     docker compose up --build -d
     ```
 
+4.  **Access Logs**:
+    The application logs are mounted to the host machine for easy access:
+    ```bash
+    # Real-time logs
+    tail -f r2vault-backend/app_logs/current-app.log
+    
+    # Archived logs (rotated hourly or at 10MB)
+    ls r2vault-backend/app_logs/YYYY-MM-DD/HH/
+    ```
+
 Refer to the **[DEPLOYMENT_GUIDE.md](./DEPLOYMENT_GUIDE.md)** for detailed environment setup and production tuning.
 
 ---

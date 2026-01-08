@@ -9,6 +9,8 @@ services:
       - DB_URL=${DB_URL:-jdbc:postgresql://db:5432/r2vault}
     env_file:
       - .env
+    volumes:
+      - ./app_logs:/app/app_logs
 
   db:
     image: postgres:15
