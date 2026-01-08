@@ -18,6 +18,8 @@ import org.springframework.security.authentication.UsernamePasswordAuthenticatio
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.*;
 
+import com.mxverse.storage.r2vault.dto.ApiResponse;
+
 import java.security.Principal;
 
 /**
@@ -44,9 +46,10 @@ public class AuthController {
      * @return ResponseEntity with success message or error if username exists.
      */
     @PostMapping("/register")
-    public ResponseEntity<String> register(@Valid @RequestBody AuthRequest request) {
+    public ResponseEntity<ApiResponse<String>> register(@Valid @RequestBody AuthRequest request) {
         if (userRepository.findByUsername(request.username()).isPresent()) {
-            return ResponseEntity.badRequest().body("Username already exists");
+            return ResponseEntity.badRequest()
+                    .body(ApiResponse.error("Username already exists", 400));
         }
 
         User user = User.builder()
@@ -56,7 +59,8 @@ public class AuthController {
         userRepository.save(user);
 
         log.info("Successfully registered user: {}", request.username());
-        return ResponseEntity.ok("User registered successfully");
+        return ResponseEntity
+                .ok(ApiResponse.success("User registered successfully", "User registered successfully", 200));
     }
 
     /**
@@ -66,7 +70,7 @@ public class AuthController {
      * @return ResponseEntity containing TokenResponse (AccessToken + RefreshToken).
      */
     @PostMapping("/login")
-    public ResponseEntity<TokenResponse> login(@Valid @RequestBody AuthRequest request) {
+    public ResponseEntity<ApiResponse<TokenResponse>> login(@Valid @RequestBody AuthRequest request) {
         authenticationManager.authenticate(
                 new UsernamePasswordAuthenticationToken(request.username(), request.password()));
 
@@ -74,7 +78,8 @@ public class AuthController {
         RefreshToken refreshToken = refreshTokenService.createRefreshToken(request.username());
 
         log.info("User logged in: {}", request.username());
-        return ResponseEntity.ok(new TokenResponse(accessToken, refreshToken.getToken()));
+        return ResponseEntity.ok(
+                ApiResponse.success(new TokenResponse(accessToken, refreshToken.getToken()), "Login successful", 200));
     }
 
     /**
@@ -84,7 +89,7 @@ public class AuthController {
      * @return New access token.
      */
     @PostMapping("/refresh")
-    public ResponseEntity<TokenResponse> refreshToken(@Valid @RequestBody TokenRefreshRequest request) {
+    public ResponseEntity<ApiResponse<TokenResponse>> refreshToken(@Valid @RequestBody TokenRefreshRequest request) {
         String requestRefreshToken = request.refreshToken();
 
         return refreshTokenService.findByToken(requestRefreshToken)
@@ -93,7 +98,8 @@ public class AuthController {
                 .map(user -> {
                     log.info("Access token refreshed for user: {}", user.getUsername());
                     String token = jwtUtils.generateToken(user.getUsername());
-                    return ResponseEntity.ok(new TokenResponse(token, requestRefreshToken));
+                    return ResponseEntity.ok(ApiResponse.success(new TokenResponse(token, requestRefreshToken),
+                            "Token refreshed successfully", 200));
                 })
                 .orElseThrow(() -> {
                     log.error("Refresh token not found: {}", requestRefreshToken);
@@ -109,8 +115,8 @@ public class AuthController {
      * @return Success message.
      */
     @PostMapping("/logout")
-    public ResponseEntity<String> logout(Principal principal) {
+    public ResponseEntity<ApiResponse<String>> logout(Principal principal) {
         refreshTokenService.deleteByUserId(principal.getName());
-        return ResponseEntity.ok("Log out successful!");
+        return ResponseEntity.ok(ApiResponse.success("Log out successful!", "Log out successful!", 200));
     }
 }

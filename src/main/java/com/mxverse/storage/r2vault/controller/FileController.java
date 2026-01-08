@@ -16,6 +16,9 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.security.Principal;
 import java.util.List;
+
+import com.mxverse.storage.r2vault.dto.ApiResponse;
+
 import java.util.Map;
 
 /**
@@ -41,16 +44,17 @@ public class FileController {
      * @throws IOException If file processing fails.
      */
     @PostMapping("/upload")
-    public ResponseEntity<String> upload(
+    public ResponseEntity<ApiResponse<String>> upload(
             @RequestParam("file") MultipartFile file,
             Principal principal) throws IOException {
 
         if (file.isEmpty()) {
-            return ResponseEntity.badRequest().body("File is empty");
+            return ResponseEntity.badRequest()
+                    .body(ApiResponse.error("File is empty", 400));
         }
 
         String key = fileService.uploadFile(principal.getName(), file);
-        return ResponseEntity.ok(key);
+        return ResponseEntity.ok(ApiResponse.success(key, "File uploaded successfully", 200));
     }
 
     /**
@@ -89,11 +93,12 @@ public class FileController {
      * @return List of file metadata objects.
      */
     @GetMapping("/list")
-    public ResponseEntity<List<FileMetadata>> listFiles(
+    public ResponseEntity<ApiResponse<List<FileMetadata>>> listFiles(
             Principal principal,
             @RequestParam(required = false) String type,
             @RequestParam(required = false, defaultValue = "date") String sortBy) {
-        return ResponseEntity.ok(fileService.listUserFiles(principal.getName(), type, sortBy));
+        List<FileMetadata> files = fileService.listUserFiles(principal.getName(), type, sortBy);
+        return ResponseEntity.ok(ApiResponse.success(files, "Files retrieved successfully", 200));
     }
 
     /**
@@ -106,7 +111,7 @@ public class FileController {
      * @return 204 No Content response.
      */
     @DeleteMapping
-    public ResponseEntity<Void> deleteFiles(@RequestBody List<String> keys, Principal principal) {
+    public ResponseEntity<ApiResponse<Void>> deleteFiles(@RequestBody List<String> keys, Principal principal) {
         // Enforce user isolation: only allow deletion of owned files
         List<String> userKeys = keys.stream()
                 .filter(key -> key.startsWith("users/" + principal.getName() + "/"))
@@ -115,7 +120,7 @@ public class FileController {
         if (!userKeys.isEmpty()) {
             fileService.deleteFiles(userKeys);
         }
-        return ResponseEntity.noContent().build();
+        return ResponseEntity.ok(ApiResponse.success(null, "Files deleted successfully", 200));
     }
 
     /**
@@ -125,15 +130,17 @@ public class FileController {
      * @return Map containing usedBytes, quotaBytes, and usagePercentage.
      */
     @GetMapping("/usage")
-    public ResponseEntity<Map<String, Object>> getUsage(Principal principal) {
+    public ResponseEntity<ApiResponse<Map<String, Object>>> getUsage(Principal principal) {
         String userId = principal.getName();
         long usedBytes = fileService.getStorageUsage(userId);
         long quotaBytes = fileService.getQuotaLimit();
 
-        return ResponseEntity.ok(Map.of(
+        Map<String, Object> usageData = Map.of(
                 "userId", userId,
                 "usedBytes", usedBytes,
                 "quotaBytes", quotaBytes,
-                "usagePercentage", (double) usedBytes / quotaBytes * 100));
+                "usagePercentage", (double) usedBytes / quotaBytes * 100);
+
+        return ResponseEntity.ok(ApiResponse.success(usageData, "Usage statistics retrieved", 200));
     }
 }
