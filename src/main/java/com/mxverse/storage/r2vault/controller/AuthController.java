@@ -1,8 +1,6 @@
 package com.mxverse.storage.r2vault.controller;
 
-import com.mxverse.storage.r2vault.dto.AuthRequest;
-import com.mxverse.storage.r2vault.dto.TokenRefreshRequest;
-import com.mxverse.storage.r2vault.dto.TokenResponse;
+import com.mxverse.storage.r2vault.dto.*;
 import com.mxverse.storage.r2vault.exception.TokenRefreshException;
 import com.mxverse.storage.r2vault.model.RefreshToken;
 import com.mxverse.storage.r2vault.model.User;
@@ -12,13 +10,18 @@ import com.mxverse.storage.r2vault.util.JwtUtils;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.crypto.password.PasswordEncoder;
-import org.springframework.web.bind.annotation.*;
-
-import com.mxverse.storage.r2vault.dto.ApiResponse;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
 
 import java.security.Principal;
 
@@ -49,7 +52,7 @@ public class AuthController {
     public ResponseEntity<ApiResponse<String>> register(@Valid @RequestBody AuthRequest request) {
         if (userRepository.findByUsername(request.username()).isPresent()) {
             return ResponseEntity.badRequest()
-                    .body(ApiResponse.error("Username already exists", 400));
+                    .body(ApiResponse.error("User already exists", 400));
         }
 
         User user = User.builder()
@@ -70,16 +73,31 @@ public class AuthController {
      * @return ResponseEntity containing TokenResponse (AccessToken + RefreshToken).
      */
     @PostMapping("/login")
-    public ResponseEntity<ApiResponse<TokenResponse>> login(@Valid @RequestBody AuthRequest request) {
-        authenticationManager.authenticate(
-                new UsernamePasswordAuthenticationToken(request.username(), request.password()));
+    public ResponseEntity<ApiResponse<TokenResponse>> login(@Valid @RequestBody LoginRequest request) {
+        if (userRepository.findByUsername(request.username()).isEmpty()) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(ApiResponse.error("User not found", HttpStatus.UNAUTHORIZED.value()));
+        }
 
-        String accessToken = jwtUtils.generateToken(request.username());
-        RefreshToken refreshToken = refreshTokenService.createRefreshToken(request.username());
+        try {
+            Authentication authentication = authenticationManager.authenticate(
+                    new UsernamePasswordAuthenticationToken(request.username(), request.password()));
 
-        log.info("User logged in: {}", request.username());
-        return ResponseEntity.ok(
-                ApiResponse.success(new TokenResponse(accessToken, refreshToken.getToken()), "Login successful", 200));
+            SecurityContextHolder.getContext().setAuthentication(authentication);
+
+            String accessToken = jwtUtils.generateToken(authentication.getName());
+            RefreshToken refreshToken = refreshTokenService.createRefreshToken(authentication.getName());
+
+            log.info("User logged in: {}", request.username());
+
+            return ResponseEntity.ok(ApiResponse.success(
+                    new TokenResponse(accessToken, refreshToken.getToken()),
+                    "Login successful",
+                    HttpStatus.OK.value()));
+        } catch (BadCredentialsException e) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(ApiResponse.error("Incorrect password", HttpStatus.UNAUTHORIZED.value()));
+        }
     }
 
     /**

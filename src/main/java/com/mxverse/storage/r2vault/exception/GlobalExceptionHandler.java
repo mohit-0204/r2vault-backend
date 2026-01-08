@@ -11,6 +11,7 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
 
 import java.io.IOException;
+import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -29,6 +30,13 @@ public class GlobalExceptionHandler {
                 .body(ApiResponse.error("File size exceeds limit!", HttpStatus.CONTENT_TOO_LARGE.value()));
     }
 
+    @ExceptionHandler(org.springframework.security.authentication.BadCredentialsException.class)
+    public ResponseEntity<ApiResponse<Void>> handleBadCredentialsException(
+            org.springframework.security.authentication.BadCredentialsException ex) {
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                .body(ApiResponse.error("Invalid username or password", HttpStatus.UNAUTHORIZED.value()));
+    }
+
     @ExceptionHandler(TokenRefreshException.class)
     public ResponseEntity<ApiResponse<Void>> handleTokenRefreshException(TokenRefreshException e) {
         return ResponseEntity.status(HttpStatus.FORBIDDEN)
@@ -42,7 +50,13 @@ public class GlobalExceptionHandler {
         ex.getBindingResult().getFieldErrors()
                 .forEach(error -> errors.put(error.getField(), error.getDefaultMessage()));
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                .body(ApiResponse.success(errors, "Validation Failed", HttpStatus.BAD_REQUEST.value()));
+                .body(ApiResponse.<Map<String, String>>builder()
+                        .success(false)
+                        .message("Validation Failed")
+                        .data(errors)
+                        .status(HttpStatus.BAD_REQUEST.value())
+                        .timestamp(LocalDateTime.now())
+                        .build());
     }
 
     @ExceptionHandler(AmazonServiceException.class)
