@@ -1,7 +1,8 @@
 package com.mxverse.storage.r2vault.exception;
 
-import com.amazonaws.AmazonServiceException;
-import com.amazonaws.SdkClientException;
+import org.springframework.security.authentication.BadCredentialsException;
+import software.amazon.awssdk.services.s3.model.S3Exception;
+import software.amazon.awssdk.core.exception.SdkException;
 import com.mxverse.storage.r2vault.dto.ApiResponse;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -30,9 +31,8 @@ public class GlobalExceptionHandler {
                 .body(ApiResponse.error("File size exceeds limit!", HttpStatus.CONTENT_TOO_LARGE.value()));
     }
 
-    @ExceptionHandler(org.springframework.security.authentication.BadCredentialsException.class)
-    public ResponseEntity<ApiResponse<Void>> handleBadCredentialsException(
-            org.springframework.security.authentication.BadCredentialsException ex) {
+    @ExceptionHandler(BadCredentialsException.class)
+    public ResponseEntity<ApiResponse<Void>> handleBadCredentialsException(BadCredentialsException ex) {
         return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
                 .body(ApiResponse.error("Invalid username or password", HttpStatus.UNAUTHORIZED.value()));
     }
@@ -59,14 +59,16 @@ public class GlobalExceptionHandler {
                         .build());
     }
 
-    @ExceptionHandler(AmazonServiceException.class)
-    public ResponseEntity<ApiResponse<Void>> handleS3ServiceException(AmazonServiceException e) {
-        return ResponseEntity.status(e.getStatusCode())
-                .body(ApiResponse.error("S3 Service Error: " + e.getErrorMessage(), e.getStatusCode()));
+    @ExceptionHandler(S3Exception.class)
+    public ResponseEntity<ApiResponse<Void>> handleS3ServiceException(S3Exception e) {
+        int statusCode = e.statusCode();
+        String message = e.awsErrorDetails() != null ? e.awsErrorDetails().errorMessage() : e.getMessage();
+        return ResponseEntity.status(statusCode)
+                .body(ApiResponse.error("S3 Service Error: " + message, statusCode));
     }
 
-    @ExceptionHandler(SdkClientException.class)
-    public ResponseEntity<ApiResponse<Void>> handleS3ClientException(SdkClientException e) {
+    @ExceptionHandler(SdkException.class)
+    public ResponseEntity<ApiResponse<Void>> handleS3ClientException(SdkException e) {
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                 .body(ApiResponse.error("S3 Client Error: " + e.getMessage(),
                         HttpStatus.INTERNAL_SERVER_ERROR.value()));

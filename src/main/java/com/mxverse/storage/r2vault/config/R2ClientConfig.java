@@ -1,13 +1,14 @@
 package com.mxverse.storage.r2vault.config;
 
-import com.amazonaws.auth.AWSStaticCredentialsProvider;
-import com.amazonaws.auth.BasicAWSCredentials;
-import com.amazonaws.client.builder.AwsClientBuilder;
-import com.amazonaws.services.s3.AmazonS3;
-import com.amazonaws.services.s3.AmazonS3ClientBuilder;
+import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
+import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
+import software.amazon.awssdk.regions.Region;
+import software.amazon.awssdk.services.s3.S3Client;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+
+import java.net.URI;
 
 /**
  * Configuration for the AWS S3 (Cloudflare R2) client bean.
@@ -20,23 +21,25 @@ public class R2ClientConfig {
     private final R2Properties r2Properties;
 
     /**
-     * Creates and configures the AmazonS3 client bean for R2 storage.
+     * Creates and configures the S3Client bean for R2 storage.
      *
-     * @return A configured AmazonS3 client instance.
+     * @return A configured S3Client instance.
      */
     @Bean
-    public AmazonS3 r2Client() {
+    public S3Client s3Client() {
         if (r2Properties.getAccessKey() == null || r2Properties.getSecretKey() == null ||
                 r2Properties.getAccessKey().isBlank() || r2Properties.getSecretKey().isBlank()) {
             // Return null if credentials are missing to allow @Validated validation to
             // handle errors gracefully
             return null;
         }
-        return AmazonS3ClientBuilder.standard()
-                .withEndpointConfiguration(
-                        new AwsClientBuilder.EndpointConfiguration(r2Properties.getEndpoint(), "auto"))
-                .withCredentials(new AWSStaticCredentialsProvider(
-                        new BasicAWSCredentials(r2Properties.getAccessKey(), r2Properties.getSecretKey())))
+
+        return S3Client.builder()
+                .endpointOverride(URI.create(r2Properties.getEndpoint()))
+                .credentialsProvider(StaticCredentialsProvider.create(
+                        AwsBasicCredentials.create(r2Properties.getAccessKey(),
+                                r2Properties.getSecretKey())))
+                .region(Region.of("auto")) // R2 uses 'auto' or specific regions
                 .build();
     }
 }

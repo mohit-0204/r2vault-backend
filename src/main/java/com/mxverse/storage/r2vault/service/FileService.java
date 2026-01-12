@@ -1,7 +1,8 @@
 package com.mxverse.storage.r2vault.service;
 
-import com.amazonaws.services.s3.AmazonS3;
-import com.amazonaws.services.s3.model.*;
+import software.amazon.awssdk.core.sync.RequestBody;
+import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.model.*;
 import com.mxverse.storage.r2vault.dto.FileMetadata;
 import com.mxverse.storage.r2vault.exception.QuotaExceededException;
 import lombok.RequiredArgsConstructor;
@@ -30,7 +31,7 @@ import java.util.stream.Collectors;
 @Slf4j
 public class FileService {
 
-    private final AmazonS3 s3;
+    private final S3Client s3;
 
     @Value("${r2.bucket}")
     private String bucket;
@@ -76,13 +77,15 @@ public class FileService {
             // Standard isolation pattern: users/{userId}/{uuid}{extension}
             String key = "users/" + userId + "/" + UUID.randomUUID() + extension;
 
-            ObjectMetadata metadata = new ObjectMetadata();
-            metadata.setContentLength(fileSize);
-            metadata.setContentType(file.getContentType());
-            metadata.addUserMetadata("original-filename", originalFilename);
+            PutObjectRequest putRequest = PutObjectRequest.builder()
+                    .bucket(bucket)
+                    .key(key)
+                    .contentType(file.getContentType())
+                    .metadata(Map.of("original-filename", originalFilename != null ? originalFilename : "unknown"))
+                    .build();
 
             log.info("Uploading file to R2: bucket={}, key={}, size={}", bucket, key, fileSize);
-            s3.putObject(bucket, key, file.getInputStream(), metadata);
+            s3.putObject(putRequest, RequestBody.fromInputStream(file.getInputStream(), fileSize));
 
             return key;
         } finally {
@@ -120,8 +123,12 @@ public class FileService {
      */
     public InputStream downloadFile(String key) {
         log.info("Downloading file from R2: bucket={}, key={}", bucket, key);
-        S3Object object = s3.getObject(bucket, key);
-        return object.getObjectContent();
+        GetObjectRequest getRequest = GetObjectRequest.builder()
+                .bucket(bucket)
+                .key(key)
+                .build();
+
+        return s3.getObject(getRequest);
     }
 
     /**
@@ -136,20 +143,32 @@ public class FileService {
         String prefix = "users/" + userId + "/";
         log.info("Listing files for user: {} with prefix: {}", userId, prefix);
 
-        ObjectListing listing = s3.listObjects(bucket, prefix);
-        List<FileMetadata> files = listing.getObjectSummaries().stream()
-                .map(summary -> {
-                    ObjectMetadata metadata = s3.getObjectMetadata(bucket, summary.getKey());
-                    String originalFilename = metadata.getUserMetadata().get("original-filename");
+        ListObjectsV2Request listRequest = ListObjectsV2Request.builder()
+                .bucket(bucket)
+                .prefix(prefix)
+                .build();
+
+        ListObjectsV2Response listResponse = s3.listObjectsV2(listRequest);
+
+        List<FileMetadata> files = listResponse.contents().stream()
+                .map(s3Object -> {
+                    HeadObjectRequest headRequest = HeadObjectRequest.builder()
+                            .bucket(bucket)
+                            .key(s3Object.key())
+                            .build();
+                    HeadObjectResponse headResponse = s3.headObject(headRequest);
+
+                    String originalFilename = headResponse.metadata().get("original-filename");
                     if (originalFilename == null) {
-                        originalFilename = summary.getKey().substring(summary.getKey().lastIndexOf("/") + 1);
+                        originalFilename = s3Object.key().substring(s3Object.key().lastIndexOf("/") + 1);
                     }
+
                     return FileMetadata.builder()
-                            .key(summary.getKey())
+                            .key(s3Object.key())
                             .filename(originalFilename)
-                            .size(summary.getSize())
-                            .contentType(metadata.getContentType())
-                            .lastModified(summary.getLastModified().toInstant())
+                            .size(s3Object.size())
+                            .contentType(headResponse.contentType())
+                            .lastModified(s3Object.lastModified())
                             .build();
                 })
                 .filter(file -> type == null || (file.contentType() != null && file.contentType().contains(type)))
@@ -174,9 +193,17 @@ public class FileService {
      */
     public void deleteFiles(List<String> keys) {
         log.info("Deleting files: {}", keys);
-        DeleteObjectsRequest request = new DeleteObjectsRequest(bucket)
-                .withKeys(keys.toArray(new String[0]));
-        s3.deleteObjects(request);
+
+        List<ObjectIdentifier> identifiers = keys.stream()
+                .map(key -> ObjectIdentifier.builder().key(key).build())
+                .collect(Collectors.toList());
+
+        DeleteObjectsRequest deleteRequest = DeleteObjectsRequest.builder()
+                .bucket(bucket)
+                .delete(Delete.builder().objects(identifiers).build())
+                .build();
+
+        s3.deleteObjects(deleteRequest);
     }
 
     /**
@@ -187,9 +214,14 @@ public class FileService {
      */
     public long getStorageUsage(String userId) {
         String prefix = "users/" + userId + "/";
-        ObjectListing listing = s3.listObjects(bucket, prefix);
-        return listing.getObjectSummaries().stream()
-                .mapToLong(S3ObjectSummary::getSize)
+        ListObjectsV2Request listRequest = ListObjectsV2Request.builder()
+                .bucket(bucket)
+                .prefix(prefix)
+                .build();
+
+        ListObjectsV2Response listResponse = s3.listObjectsV2(listRequest);
+        return listResponse.contents().stream()
+                .mapToLong(S3Object::size)
                 .sum();
     }
 
