@@ -1,0 +1,5 @@
+# Spring Boot Failure Analyzer Registration
+# This file allows Spring to discover our custom FailureAnalyzer 
+# even before the application context is fully initialized.
+org.springframework.boot.diagnostics.FailureAnalyzer=\
+com.mxverse.storage.r2vault.exception.ConfigurationFailureAnalyzer

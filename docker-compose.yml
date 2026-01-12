@@ -6,7 +6,7 @@ services:
     ports:
       - "8080:8080"
     environment:
-      - DB_URL=${DB_URL:-jdbc:postgresql://db:5432/r2vault}
+      - DB_URL=${DB_URL}
     env_file:
       - .env
     volumes:
@@ -17,13 +17,26 @@ services:
     profiles: [ "postgres" ] # Only starts if specifically requested
     container_name: r2vault-db
     environment:
-      - POSTGRES_USER=${DB_USERNAME:-admin}
-      - POSTGRES_PASSWORD=${DB_PASSWORD:-root}
+      - POSTGRES_USER=${DB_USERNAME}
+      - POSTGRES_PASSWORD=${DB_PASSWORD}
       - POSTGRES_DB=r2vault
     ports:
       - "5433:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+
+  ngrok:
+    image: ngrok/ngrok:latest
+    profiles: [ "ngrok" ] # Only starts if specifically requested
+    container_name: r2vault-ngrok
+    restart: unless-stopped
+    command: http app:8080 # Tunnels to the 'app' service on port 8080
+    environment:
+      - NGROK_AUTHTOKEN=${NGROK_AUTHTOKEN}
+    ports:
+      - "4040:4040"
+    depends_on:
+      - app
 
 volumes:
   postgres_data:
