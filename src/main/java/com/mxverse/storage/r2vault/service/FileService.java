@@ -1,8 +1,13 @@
 package com.mxverse.storage.r2vault.service;
 
+import com.mxverse.storage.r2vault.exception.FileAccessException;
+import com.mxverse.storage.r2vault.exception.FileStorageException;
+import com.mxverse.storage.r2vault.exception.InvalidFileException;
+import software.amazon.awssdk.core.ResponseInputStream;
 import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.*;
+import com.mxverse.storage.r2vault.dto.FileDownloadResponse;
 import com.mxverse.storage.r2vault.dto.FileMetadata;
 import com.mxverse.storage.r2vault.exception.QuotaExceededException;
 import lombok.RequiredArgsConstructor;
@@ -12,7 +17,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
-import java.io.InputStream;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
@@ -31,10 +35,10 @@ import java.util.stream.Collectors;
 @Slf4j
 public class FileService {
 
-    private final S3Client s3;
+    private final S3Client s3Client;
 
     @Value("${r2.bucket}")
-    private String bucket;
+    private String bucketName;
 
     /**
      * Maximum storage allowance per user (10 GB).
@@ -56,11 +60,15 @@ public class FileService {
      *               context).
      * @param file   The multipart file to be uploaded.
      * @return The unique S3 key assigned to the uploaded file.
-     * @throws IOException            If there is an error reading the file stream.
      * @throws QuotaExceededException If the upload caused the user to exceed
      *                                their 10GB limit.
+     * @throws FileStorageException   If there is an error reading the file stream
+     *                                or uploading.
      */
-    public String uploadFile(String userId, MultipartFile file) throws IOException {
+    public String uploadFile(String userId, MultipartFile file) {
+        if (file.isEmpty()) {
+            throw new InvalidFileException("File is empty");
+        }
         long fileSize = file.getSize();
         validateQuota(userId, fileSize);
 
@@ -78,16 +86,19 @@ public class FileService {
             String key = "users/" + userId + "/" + UUID.randomUUID() + extension;
 
             PutObjectRequest putRequest = PutObjectRequest.builder()
-                    .bucket(bucket)
+                    .bucket(bucketName)
                     .key(key)
                     .contentType(file.getContentType())
                     .metadata(Map.of("original-filename", originalFilename != null ? originalFilename : "unknown"))
                     .build();
 
-            log.info("Uploading file to R2: bucket={}, key={}, size={}", bucket, key, fileSize);
-            s3.putObject(putRequest, RequestBody.fromInputStream(file.getInputStream(), fileSize));
+            log.info("Uploading file to R2: bucket={}, key={}, size={}", bucketName, key, fileSize);
+            s3Client.putObject(putRequest, RequestBody.fromInputStream(file.getInputStream(), fileSize));
 
             return key;
+        } catch (IOException e) {
+            log.error("Failed to upload file for user {}: {}", userId, e.getMessage());
+            throw new FileStorageException("Failed to read upload file stream", e);
         } finally {
             // Decrement ongoing progress regardless of success/failure
             ongoingUploads.get(userId).addAndGet(-fileSize);
@@ -116,19 +127,49 @@ public class FileService {
     }
 
     /**
-     * Retrieves a file's input stream from R2 storage.
+     * Retrieves a file from R2 storage with its metadata.
+     * Validates that the file belongs to the requested user.
      *
-     * @param key The unique identifier of the file.
-     * @return An InputStream for the requested file content.
+     * @param key    The unique identifier of the file.
+     * @param userId The user ID requesting the file.
+     * @return A FileDownloadResponse containing the stream and metadata.
      */
-    public InputStream downloadFile(String key) {
-        log.info("Downloading file from R2: bucket={}, key={}", bucket, key);
+    public FileDownloadResponse downloadFile(String key, String userId) {
+        validateOwnership(key, userId);
+        log.info("Downloading file from R2: bucket={}, key={}", bucketName, key);
+
         GetObjectRequest getRequest = GetObjectRequest.builder()
-                .bucket(bucket)
+                .bucket(bucketName)
                 .key(key)
                 .build();
 
-        return s3.getObject(getRequest);
+        ResponseInputStream<GetObjectResponse> s3Response = s3Client.getObject(getRequest);
+        GetObjectResponse metadata = s3Response.response();
+
+        String originalFilename = metadata.metadata().get("original-filename");
+        if (originalFilename == null) {
+            originalFilename = key.substring(key.lastIndexOf("/") + 1);
+        }
+
+        return new FileDownloadResponse(
+                s3Response,
+                originalFilename,
+                metadata.contentType(),
+                metadata.contentLength());
+    }
+
+    /**
+     * Validates that the given key starts with the expected user prefix.
+     *
+     * @param key    The file key.
+     * @param userId The user ID.
+     * @throws FileAccessException If the file does not belong to the user.
+     */
+    private void validateOwnership(String key, String userId) {
+        if (!key.startsWith("users/" + userId + "/")) {
+            log.warn("Access denied: User {} attempted to access key {}", userId, key);
+            throw new FileAccessException("Access denied: You do not own this file");
+        }
     }
 
     /**
@@ -144,19 +185,19 @@ public class FileService {
         log.info("Listing files for user: {} with prefix: {}", userId, prefix);
 
         ListObjectsV2Request listRequest = ListObjectsV2Request.builder()
-                .bucket(bucket)
+                .bucket(bucketName)
                 .prefix(prefix)
                 .build();
 
-        ListObjectsV2Response listResponse = s3.listObjectsV2(listRequest);
+        ListObjectsV2Response listResponse = s3Client.listObjectsV2(listRequest);
 
         List<FileMetadata> files = listResponse.contents().stream()
                 .map(s3Object -> {
                     HeadObjectRequest headRequest = HeadObjectRequest.builder()
-                            .bucket(bucket)
+                            .bucket(bucketName)
                             .key(s3Object.key())
                             .build();
-                    HeadObjectResponse headResponse = s3.headObject(headRequest);
+                    HeadObjectResponse headResponse = s3Client.headObject(headRequest);
 
                     String originalFilename = headResponse.metadata().get("original-filename");
                     if (originalFilename == null) {
@@ -188,22 +229,33 @@ public class FileService {
 
     /**
      * Performs a batch deletion of multiple files from R2.
+     * Filters the input list to only includes keys owned by the user.
      *
-     * @param keys A list of S3 keys to be deleted.
+     * @param keys   A list of S3 keys to be deleted.
+     * @param userId The user ID requesting the deletion.
      */
-    public void deleteFiles(List<String> keys) {
-        log.info("Deleting files: {}", keys);
+    public void deleteFiles(List<String> keys, String userId) {
+        List<String> userKeys = keys.stream()
+                .filter(key -> key.startsWith("users/" + userId + "/"))
+                .toList();
 
-        List<ObjectIdentifier> identifiers = keys.stream()
+        if (userKeys.isEmpty()) {
+            log.info("No files to delete for user: {}", userId);
+            return;
+        }
+
+        log.info("Deleting files for user {}: {}", userId, userKeys);
+
+        List<ObjectIdentifier> identifiers = userKeys.stream()
                 .map(key -> ObjectIdentifier.builder().key(key).build())
                 .collect(Collectors.toList());
 
         DeleteObjectsRequest deleteRequest = DeleteObjectsRequest.builder()
-                .bucket(bucket)
+                .bucket(bucketName)
                 .delete(Delete.builder().objects(identifiers).build())
                 .build();
 
-        s3.deleteObjects(deleteRequest);
+        s3Client.deleteObjects(deleteRequest);
     }
 
     /**
@@ -215,20 +267,28 @@ public class FileService {
     public long getStorageUsage(String userId) {
         String prefix = "users/" + userId + "/";
         ListObjectsV2Request listRequest = ListObjectsV2Request.builder()
-                .bucket(bucket)
+                .bucket(bucketName)
                 .prefix(prefix)
                 .build();
 
-        ListObjectsV2Response listResponse = s3.listObjectsV2(listRequest);
+        ListObjectsV2Response listResponse = s3Client.listObjectsV2(listRequest);
         return listResponse.contents().stream()
                 .mapToLong(S3Object::size)
                 .sum();
     }
 
     /**
-     * @return The global storage quota limit (10 GB).
+     * Retrieves storage usage data in a format suitable for the API response.
+     *
+     * @param userId The user ID.
+     * @return A Map containing storage statistics.
      */
-    public long getQuotaLimit() {
-        return QUOTA_LIMIT;
+    public Map<String, Object> getUsageData(String userId) {
+        long usedBytes = getStorageUsage(userId);
+        return Map.of(
+                "userId", userId,
+                "usedBytes", usedBytes,
+                "quotaBytes", QUOTA_LIMIT,
+                "usagePercentage", (double) usedBytes / QUOTA_LIMIT * 100);
     }
 }

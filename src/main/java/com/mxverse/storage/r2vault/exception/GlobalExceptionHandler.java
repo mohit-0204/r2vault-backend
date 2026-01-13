@@ -25,16 +25,42 @@ public class GlobalExceptionHandler {
                 .body(ApiResponse.error(e.getMessage(), HttpStatus.INSUFFICIENT_STORAGE.value()));
     }
 
+    @ExceptionHandler(UserAlreadyExistsException.class)
+    public ResponseEntity<ApiResponse<Void>> handleUserAlreadyExistsException(UserAlreadyExistsException e) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(ApiResponse.error(e.getMessage(), HttpStatus.CONFLICT.value()));
+    }
+
+    @ExceptionHandler(FileAccessException.class)
+    public ResponseEntity<ApiResponse<Void>> handleFileAccessException(FileAccessException e) {
+        return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                .body(ApiResponse.error(e.getMessage(), HttpStatus.FORBIDDEN.value()));
+    }
+
+    @ExceptionHandler(InvalidFileException.class)
+    public ResponseEntity<ApiResponse<Void>> handleInvalidFileException(InvalidFileException e) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(ApiResponse.error(e.getMessage(), HttpStatus.BAD_REQUEST.value()));
+    }
+
+    @ExceptionHandler(FileStorageException.class)
+    public ResponseEntity<ApiResponse<Void>> handleFileStorageException(FileStorageException e) {
+        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(ApiResponse.error(e.getMessage(), HttpStatus.INTERNAL_SERVER_ERROR.value()));
+    }
+
     @ExceptionHandler(MaxUploadSizeExceededException.class)
     public ResponseEntity<ApiResponse<Void>> handleMaxSizeException(MaxUploadSizeExceededException exc) {
         return ResponseEntity.status(HttpStatus.CONTENT_TOO_LARGE)
-                .body(ApiResponse.error("File size exceeds limit!", HttpStatus.CONTENT_TOO_LARGE.value()));
+                .body(ApiResponse.error("File size exceeds limit!",
+                        HttpStatus.CONTENT_TOO_LARGE.value()));
     }
 
     @ExceptionHandler(BadCredentialsException.class)
     public ResponseEntity<ApiResponse<Void>> handleBadCredentialsException(BadCredentialsException ex) {
         return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
-                .body(ApiResponse.error("Invalid username or password", HttpStatus.UNAUTHORIZED.value()));
+                .body(ApiResponse.error("Invalid username or password",
+                        HttpStatus.UNAUTHORIZED.value()));
     }
 
     @ExceptionHandler(TokenRefreshException.class)
@@ -77,7 +103,8 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(IOException.class)
     public ResponseEntity<ApiResponse<Void>> handleIOException(IOException e) {
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                .body(ApiResponse.error("IO Error: " + e.getMessage(), HttpStatus.INTERNAL_SERVER_ERROR.value()));
+                .body(ApiResponse.error("IO Error: " + e.getMessage(),
+                        HttpStatus.INTERNAL_SERVER_ERROR.value()));
     }
 
     @ExceptionHandler(Exception.class)
