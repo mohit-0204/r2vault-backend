@@ -43,9 +43,12 @@ public class FileController {
     @PostMapping("/upload")
     public ResponseEntity<ApiResponse<String>> upload(
             @RequestParam("file") MultipartFile file,
+            @RequestParam(value = "encryptedKey", required = false) String encryptedKey,
+            @RequestParam(value = "iv", required = false) String iv,
             Principal principal) {
 
-        String key = fileService.uploadFile(principal.getName(), file);
+        String key = fileService.uploadFile(principal.getName(), file, encryptedKey, iv);
+
         return ResponseEntity.ok(ApiResponse.success(key, "File uploaded successfully", HttpStatus.OK.value()));
     }
 

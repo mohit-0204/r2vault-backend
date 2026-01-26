@@ -1,18 +1,18 @@
 package com.mxverse.storage.r2vault.controller;
 
 import com.mxverse.storage.r2vault.dto.*;
+import com.mxverse.storage.r2vault.exception.DeviceLimitExceededException;
 import com.mxverse.storage.r2vault.service.AuthService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 
 import java.security.Principal;
+import java.util.List;
+import java.util.stream.Collectors;
 
 /**
  * REST Controller for authentication and authorization.
@@ -49,8 +49,8 @@ public class AuthController {
      * @return ResponseEntity containing TokenResponse (AccessToken + RefreshToken).
      */
     @PostMapping("/login")
-    public ResponseEntity<ApiResponse<TokenResponse>> login(@Valid @RequestBody LoginRequest request) {
-        TokenResponse response = authService.login(request.username(), request.password());
+    public ResponseEntity<ApiResponse<TokenResponse>> login(@Valid @RequestBody AuthRequest request) {
+        TokenResponse response = authService.login(request);
         return ResponseEntity
                 .ok(ApiResponse.success(
                         response,
@@ -65,9 +65,11 @@ public class AuthController {
      * @return New access token.
      */
     @PostMapping("/refresh")
-    public ResponseEntity<ApiResponse<TokenResponse>> refreshToken(@Valid @RequestBody TokenRefreshRequest request) {
+    public ResponseEntity<ApiResponse<TokenResponse>> refreshToken(
+            @Valid @RequestBody TokenRefreshRequest request) {
         TokenResponse response = authService.refreshToken(request.refreshToken());
-        return ResponseEntity.ok(ApiResponse.success(response, "Token refreshed successfully", HttpStatus.OK.value()));
+        return ResponseEntity.ok(
+                ApiResponse.success(response, "Token refreshed successfully", HttpStatus.OK.value()));
     }
 
     /**
@@ -81,6 +83,36 @@ public class AuthController {
     public ResponseEntity<ApiResponse<String>> logout(Principal principal) {
         authService.logout(principal.getName());
         return ResponseEntity
-                .ok(ApiResponse.success("Log out successful!", "Log out successful!", HttpStatus.OK.value()));
+                .ok(ApiResponse.success("Log out successful!", "Log out successful!",
+                        HttpStatus.OK.value()));
+    }
+
+    /**
+     * Verifies the integrity of the current session.
+     * <p>
+     * Used by clients at startup to verify that the local session has not been
+     * revoked. If the session is invalid, the security filter will return a 403,
+     * triggering a local data wipe for enhanced security.
+     *
+     * @param principal The authenticated user principal.
+     * @return ApiResponse confirming session validity.
+     */
+    @GetMapping("/session")
+    public ResponseEntity<ApiResponse<String>> checkSession(Principal principal) {
+        return ResponseEntity.ok(ApiResponse.success("Session valid", "Session valid", HttpStatus.OK.value()));
+    }
+
+    @ExceptionHandler(DeviceLimitExceededException.class)
+    public ResponseEntity<ApiResponse<List<DeviceDto>>> handleDeviceLimit(DeviceLimitExceededException ex) {
+        List<DeviceDto> devices = ex.getActiveDevices().stream()
+                .map(d -> new DeviceDto(d.getId(), d.getName(), d.getPlatform(),
+                        d.getLastActiveAt().toString()))
+                .collect(Collectors.toList());
+
+        return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                .body(ApiResponse.error(
+                        devices,
+                        "Device limit exceeded",
+                        403));
     }
 }

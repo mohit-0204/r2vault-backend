@@ -34,10 +34,14 @@ public class ApiResponse<T> {
     }
 
     public static <T> ApiResponse<T> error(String message, int status) {
+        return error(null, message, status);
+    }
+
+    public static <T> ApiResponse<T> error(T data, String message, int status) {
         return ApiResponse.<T>builder()
                 .success(false)
                 .message(message)
-                .data(null)
+                .data(data)
                 .status(status)
                 .timestamp(LocalDateTime.now())
                 .build();

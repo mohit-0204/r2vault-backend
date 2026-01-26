@@ -3,6 +3,11 @@ package com.mxverse.storage.r2vault.service;
 import com.mxverse.storage.r2vault.exception.FileAccessException;
 import com.mxverse.storage.r2vault.exception.FileStorageException;
 import com.mxverse.storage.r2vault.exception.InvalidFileException;
+import com.mxverse.storage.r2vault.model.FileRecord;
+import com.mxverse.storage.r2vault.model.User;
+import com.mxverse.storage.r2vault.repository.FileRecordRepository;
+import com.mxverse.storage.r2vault.repository.UserRepository;
+
 import software.amazon.awssdk.core.ResponseInputStream;
 import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.services.s3.S3Client;
@@ -14,6 +19,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
@@ -36,6 +42,8 @@ import java.util.stream.Collectors;
 public class FileService {
 
     private final S3Client s3Client;
+    private final FileRecordRepository fileRecordRepository;
+    private final UserRepository userRepository;
 
     @Value("${r2.bucket}")
     private String bucketName;
@@ -56,16 +64,21 @@ public class FileService {
      * Validates remaining quota, including concurrently active uploads, before
      * proceeding.
      *
-     * @param userId The unique identifier of the user (extracted from security
-     *               context).
-     * @param file   The multipart file to be uploaded.
+     * @param userId       The unique identifier of the user (extracted from
+     *                     security
+     *                     context).
+     * @param file         The multipart file to be uploaded.
+     * @param encryptedKey The base64 encoded encrypted AES key (optional).
+     * @param iv           The base64 encoded IV (optional).
      * @return The unique S3 key assigned to the uploaded file.
      * @throws QuotaExceededException If the upload caused the user to exceed
      *                                their 10GB limit.
      * @throws FileStorageException   If there is an error reading the file stream
      *                                or uploading.
      */
-    public String uploadFile(String userId, MultipartFile file) {
+    @Transactional
+    public String uploadFile(String userId, MultipartFile file, String encryptedKey, String iv) {
+
         if (file.isEmpty()) {
             throw new InvalidFileException("File is empty");
         }
@@ -95,7 +108,25 @@ public class FileService {
             log.info("Uploading file to R2: bucket={}, key={}, size={}", bucketName, key, fileSize);
             s3Client.putObject(putRequest, RequestBody.fromInputStream(file.getInputStream(), fileSize));
 
+            // Persist metadata in DB
+            User user = userRepository.findByUsername(userId)
+                    .orElseThrow(() -> new RuntimeException("User not found"));
+
+            FileRecord record = FileRecord.builder()
+                    .user(user)
+                    .s3Key(key)
+                    .originalFilename(originalFilename != null ? originalFilename : "unknown")
+                    .size(fileSize)
+                    .contentType(file.getContentType())
+                    .encryptedKey(encryptedKey)
+                    .iv(iv)
+                    .algorithm("AES/GCM/NoPadding")
+                    .build();
+
+            fileRecordRepository.save(record);
+
             return key;
+
         } catch (IOException e) {
             log.error("Failed to upload file for user {}: {}", userId, e.getMessage());
             throw new FileStorageException("Failed to read upload file stream", e);
@@ -191,27 +222,54 @@ public class FileService {
 
         ListObjectsV2Response listResponse = s3Client.listObjectsV2(listRequest);
 
+        // Fetch all user file records from DB for metadata enrichment
+        User user = userRepository.findByUsername(userId)
+                .orElseThrow(() -> new RuntimeException("User not found"));
+        Map<String, FileRecord> dbRecords = fileRecordRepository.findAllByUser(user).stream()
+                .collect(Collectors.toMap(FileRecord::getS3Key, r -> r));
+
         List<FileMetadata> files = listResponse.contents().stream()
                 .map(s3Object -> {
-                    HeadObjectRequest headRequest = HeadObjectRequest.builder()
-                            .bucket(bucketName)
-                            .key(s3Object.key())
-                            .build();
-                    HeadObjectResponse headResponse = s3Client.headObject(headRequest);
+                    FileRecord dbRecord = dbRecords.get(s3Object.key());
 
-                    String originalFilename = headResponse.metadata().get("original-filename");
-                    if (originalFilename == null) {
-                        originalFilename = s3Object.key().substring(s3Object.key().lastIndexOf("/") + 1);
+                    String filename;
+                    String contentType;
+                    String encryptedKey = null;
+                    String iv = null;
+                    String algorithm = null;
+
+                    if (dbRecord != null) {
+                        filename = dbRecord.getOriginalFilename();
+                        contentType = dbRecord.getContentType();
+                        encryptedKey = dbRecord.getEncryptedKey();
+                        iv = dbRecord.getIv();
+                        algorithm = dbRecord.getAlgorithm();
+                    } else {
+                        // Fallback to S3 metadata for legacy/unmanaged files
+                        HeadObjectRequest headRequest = HeadObjectRequest.builder()
+                                .bucket(bucketName)
+                                .key(s3Object.key())
+                                .build();
+                        HeadObjectResponse headResponse = s3Client.headObject(headRequest);
+                        filename = headResponse.metadata().get("original-filename");
+                        if (filename == null) {
+                            filename = s3Object.key().substring(s3Object.key().lastIndexOf("/") + 1);
+                        }
+                        contentType = headResponse.contentType();
                     }
 
                     return FileMetadata.builder()
                             .key(s3Object.key())
-                            .filename(originalFilename)
+                            .filename(filename)
                             .size(s3Object.size())
-                            .contentType(headResponse.contentType())
+                            .contentType(contentType)
                             .lastModified(s3Object.lastModified())
+                            .encryptedKey(encryptedKey)
+                            .iv(iv)
+                            .algorithm(algorithm)
                             .build();
                 })
+
                 .filter(file -> type == null || (file.contentType() != null && file.contentType().contains(type)))
                 .collect(Collectors.toList());
 
@@ -256,6 +314,9 @@ public class FileService {
                 .build();
 
         s3Client.deleteObjects(deleteRequest);
+
+        // Batch delete from DB as well
+        userKeys.forEach(fileRecordRepository::deleteByS3Key);
     }
 
     /**

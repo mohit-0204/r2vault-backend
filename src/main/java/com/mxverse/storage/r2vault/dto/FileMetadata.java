@@ -8,9 +8,12 @@ import java.time.Instant;
  */
 @Builder
 public record FileMetadata(
-        String key,
-        String filename,
-        long size,
-        String contentType,
-        Instant lastModified) {
+                String key,
+                String filename,
+                long size,
+                String contentType,
+                Instant lastModified,
+                String encryptedKey,
+                String iv,
+                String algorithm) {
 }
