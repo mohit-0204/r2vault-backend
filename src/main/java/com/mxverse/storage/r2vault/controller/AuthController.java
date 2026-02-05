@@ -102,6 +102,38 @@ public class AuthController {
         return ResponseEntity.ok(ApiResponse.success("Session valid", "Session valid", HttpStatus.OK.value()));
     }
 
+    /**
+     * Retrieves the cryptographic metadata required for account recovery.
+     *
+     * @param username The username of the user seeking recovery.
+     * @return ResponseEntity containing the recovery metadata.
+     */
+    @GetMapping("/recovery-metadata")
+    public ResponseEntity<ApiResponse<AccountKeyMetadataDto>> getRecoveryMetadata(@RequestParam String username) {
+        AccountKeyMetadataDto metadata = authService.getRecoveryMetadata(username);
+        return ResponseEntity.ok(ApiResponse.success(metadata, "Recovery metadata retrieved", HttpStatus.OK.value()));
+    }
+
+    /**
+     * Completes the password reset process.
+     * Requires the new password and the account key re-wrapped with the new UMK.
+     *
+     * @param request The reset password request payload.
+     * @return ResponseEntity confirming the reset.
+     */
+    @PostMapping("/reset-password")
+    public ResponseEntity<ApiResponse<String>> resetPassword(@Valid @RequestBody ResetPasswordRequest request) {
+        authService.resetPassword(request);
+        return ResponseEntity.ok(ApiResponse.success("Password reset successful", "Password reset successful", HttpStatus.OK.value()));
+    }
+
+    /**
+     * Special handler for DeviceLimitExceededException.
+     * Returns a 403 Forbidden status along with the list of currently active devices to facilitate eviction.
+     *
+     * @param ex The exception caught.
+     * @return ResponseEntity with 403 status and device list.
+     */
     @ExceptionHandler(DeviceLimitExceededException.class)
     public ResponseEntity<ApiResponse<List<DeviceDto>>> handleDeviceLimit(DeviceLimitExceededException ex) {
         List<DeviceDto> devices = ex.getActiveDevices().stream()

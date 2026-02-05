@@ -11,6 +11,7 @@ public record AuthRequest(
         String deviceId,
         String deviceName,
         String wrappedAccountKey,
+        String recoveryWrappedKey,
         String kdfSalt,
         Integer kdfIterations,
         String evictDeviceId) {

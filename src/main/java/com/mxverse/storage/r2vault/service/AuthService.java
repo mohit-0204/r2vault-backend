@@ -2,8 +2,10 @@ package com.mxverse.storage.r2vault.service;
 
 import com.mxverse.storage.r2vault.dto.AccountKeyMetadataDto;
 import com.mxverse.storage.r2vault.dto.AuthRequest;
+import com.mxverse.storage.r2vault.dto.ResetPasswordRequest;
 import com.mxverse.storage.r2vault.dto.TokenResponse;
 import com.mxverse.storage.r2vault.exception.DeviceLimitExceededException;
+import com.mxverse.storage.r2vault.exception.ResourceNotFoundException;
 import com.mxverse.storage.r2vault.exception.TokenRefreshException;
 import com.mxverse.storage.r2vault.exception.UserAlreadyExistsException;
 import com.mxverse.storage.r2vault.model.AccountKey;
@@ -66,6 +68,7 @@ public class AuthService {
             AccountKey accountKey = AccountKey.builder()
                     .user(user)
                     .wrappedKey(request.wrappedAccountKey())
+                    .recoveryWrappedKey(request.recoveryWrappedKey())
                     .kdfSalt(request.kdfSalt())
                     .kdfIterations(request.kdfIterations())
                     .build();
@@ -118,7 +121,7 @@ public class AuthService {
 
         // Fetch Account Key metadata
         AccountKeyMetadataDto akDto = accountKeyRepository.findByUser(user)
-                .map(ak -> new AccountKeyMetadataDto(ak.getWrappedKey(), ak.getKdfSalt(), ak.getKdfIterations()))
+                .map(ak -> new AccountKeyMetadataDto(ak.getWrappedKey(), ak.getRecoveryWrappedKey(), ak.getKdfSalt(), ak.getKdfIterations()))
                 .orElse(null);
 
         log.info("User logged in: {}", user.getUsername());
@@ -130,6 +133,15 @@ public class AuthService {
                 .build();
     }
 
+    /**
+     * Handles the device-specific logic during login.
+     * Checks if the device is already registered or if the device limit has been reached.
+     *
+     * @param user The authenticated user.
+     * @param deviceId The unique ID of the device.
+     * @param name The descriptive name of the device.
+     * @throws DeviceLimitExceededException if the user has reached the maximum allowed active devices.
+     */
     private void handleDeviceLogin(User user, String deviceId, String name) {
         Optional<Device> existing = deviceRepository.findByUserAndDeviceId(user, deviceId);
         if (existing.isPresent()) {
@@ -148,6 +160,13 @@ public class AuthService {
         registerDevice(user, deviceId, name);
     }
 
+    /**
+     * Registers a new device for a user.
+     *
+     * @param user The user to whom the device belongs.
+     * @param deviceId The unique hardware/app ID of the device.
+     * @param name The display name of the device.
+     */
     private void registerDevice(User user, String deviceId, String name) {
         Device device = Device.builder()
                 .user(user)
@@ -190,5 +209,54 @@ public class AuthService {
                     log.error("Refresh token not found: {}", refreshToken);
                     return new TokenRefreshException(refreshToken, "Refresh token is not in database!");
                 });
+    }
+
+    /**
+     * Retrieves the account recovery metadata for a given username.
+     * This metadata includes the wrapped account key and KDF parameters.
+     *
+     * @param username The username for which to retrieve metadata.
+     * @return The AccountKeyMetadataDto containing recovery info.
+     * @throws ResourceNotFoundException if the user or metadata is not found.
+     */
+    @Transactional(readOnly = true)
+    public AccountKeyMetadataDto getRecoveryMetadata(String username) {
+        User user = userRepository.findByUsername(username)
+                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
+
+        return accountKeyRepository.findByUser(user)
+                .map(ak -> new AccountKeyMetadataDto(
+                        ak.getWrappedKey(),
+                        ak.getRecoveryWrappedKey(),
+                        ak.getKdfSalt(),
+                        ak.getKdfIterations()
+                ))
+                .orElseThrow(() -> new ResourceNotFoundException("Recovery metadata not found"));
+    }
+
+    /**
+     * Resets the user's password and updates their wrapped account key.
+     * This is the final step of the recovery flow, performed after mnemonic verification.
+     *
+     * @param request The reset request containing the new password and re-wrapped key.
+     * @throws ResourceNotFoundException if the user or the existing account key is not found.
+     */
+    @Transactional
+    public void resetPassword(ResetPasswordRequest request) {
+        User user = userRepository.findByUsername(request.username())
+                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
+
+        user.setPassword(passwordEncoder.encode(request.newPassword()));
+        userRepository.save(user);
+
+        AccountKey accountKey = accountKeyRepository.findByUser(user)
+                .orElseThrow(() -> new ResourceNotFoundException("Account key not found"));
+
+        accountKey.setWrappedKey(request.wrappedAccountKey());
+        accountKey.setKdfSalt(request.kdfSalt());
+        accountKey.setKdfIterations(request.kdfIterations());
+        accountKeyRepository.save(accountKey);
+        
+        log.info("Password and Account Key reset successfully for user: {}", request.username());
     }
 }
