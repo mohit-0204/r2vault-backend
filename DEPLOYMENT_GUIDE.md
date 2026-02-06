@@ -62,9 +62,9 @@ docker compose up --build -d
 
 ### Which one should I use?
 
-| If your `DB_URL` in `.env` is... | Use this Command |
-| :--- | :--- |
-| `jdbc:postgresql://db:5432/...` | **Path A** (Local) |
+| If your `DB_URL` in `.env` is...         | Use this Command      |
+|:-----------------------------------------|:----------------------|
+| `jdbc:postgresql://db:5432/...`          | **Path A** (Local)    |
 | `jdbc:postgresql://your-remote-host/...` | **Path B** (External) |
 
 ---
@@ -94,12 +94,12 @@ To migrate the entire system to a production server:
 
 ## 🛠️ 4. Maintenance & Operations
 
-| Task | Command |
-| :--- | :--- |
-| **View Logs** | `docker compose logs -f app` |
-| **Stop System** | `docker compose stop` |
-| **Full Reset (Wipe Data)** | `docker compose down -v` |
-| **Check Health** | `docker ps` |
+| Task                       | Command                      |
+|:---------------------------|:-----------------------------|
+| **View Logs**              | `docker compose logs -f app` |
+| **Stop System**            | `docker compose stop`        |
+| **Full Reset (Wipe Data)** | `docker compose down -v`     |
+| **Check Health**           | `docker ps`                  |
 
 ---
 

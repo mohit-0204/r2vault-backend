@@ -92,9 +92,9 @@ public class UploadInitiationService {
         fileRecord = fileRecordRepository.save(fileRecord);
 
         // 5. Create UploadSession
-        // Calculate parts (fixed 5MB for R2 compatibility except last part)
         long partSize = MIN_PART_SIZE;
-        int totalParts = (int) Math.ceil((double) request.totalSize() / partSize);
+        int totalParts = request.totalParts() != null ? request.totalParts() :
+                (int) Math.ceil((double) request.totalSize() / partSize);
 
         UploadSession session = UploadSession.builder()
                 .user(user)

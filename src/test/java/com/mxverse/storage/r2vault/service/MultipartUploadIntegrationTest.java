@@ -81,7 +81,7 @@ public class MultipartUploadIntegrationTest {
     @Test
     void test1_HappyPath() {
         // 1. Initiate
-        InitiateUploadRequest request = new InitiateUploadRequest("test.bin", 15 * 1024 * 1024L, "application/octet-stream", null, null);
+        InitiateUploadRequest request = new InitiateUploadRequest("test.bin", 15 * 1024 * 1024L, "application/octet-stream", null, null, null);
         UploadSessionResponse initiateResponse = initiationService.initiateUpload(USERNAME, request);
         assertNotNull(initiateResponse.uploadId());
         String sessionId = initiateResponse.sessionId();
@@ -103,7 +103,7 @@ public class MultipartUploadIntegrationTest {
 
     @Test
     void test2_IdempotentPartUpload() {
-        InitiateUploadRequest request = new InitiateUploadRequest("test.bin", 10 * 1024 * 1024L, "application/octet-stream", null, null);
+        InitiateUploadRequest request = new InitiateUploadRequest("test.bin", 10 * 1024 * 1024L, "application/octet-stream", null, null, null);
         UploadSessionResponse initiateResponse = initiationService.initiateUpload(USERNAME, request);
         String sessionId = initiateResponse.sessionId();
 
@@ -120,7 +120,7 @@ public class MultipartUploadIntegrationTest {
 
     @Test
     void test3_ResumeFlow() {
-        InitiateUploadRequest request = new InitiateUploadRequest("test.bin", 10 * 1024 * 1024L, "application/octet-stream", null, null);
+        InitiateUploadRequest request = new InitiateUploadRequest("test.bin", 10 * 1024 * 1024L, "application/octet-stream", null, null, null);
         UploadSessionResponse initiateResponse = initiationService.initiateUpload(USERNAME, request);
         String sessionId = initiateResponse.sessionId();
 
@@ -142,7 +142,7 @@ public class MultipartUploadIntegrationTest {
 
     @Test
     void test4_AbortRace() {
-        InitiateUploadRequest request = new InitiateUploadRequest("test.bin", 10 * 1024 * 1024L, "application/octet-stream", null, null);
+        InitiateUploadRequest request = new InitiateUploadRequest("test.bin", 10 * 1024 * 1024L, "application/octet-stream", null, null, null);
         UploadSessionResponse initiateResponse = initiationService.initiateUpload(USERNAME, request);
         String sessionId = initiateResponse.sessionId();
 
@@ -159,7 +159,7 @@ public class MultipartUploadIntegrationTest {
 
     @Test
     void test5_ExpiryCleanup() {
-        InitiateUploadRequest request = new InitiateUploadRequest("test.bin", 10 * 1024 * 1024L, "application/octet-stream", null, null);
+        InitiateUploadRequest request = new InitiateUploadRequest("test.bin", 10 * 1024 * 1024L, "application/octet-stream", null, null, null);
         UploadSessionResponse initiateResponse = initiationService.initiateUpload(USERNAME, request);
         String sessionId = initiateResponse.sessionId();
 

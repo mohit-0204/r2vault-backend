@@ -21,6 +21,7 @@ public record InitiateUploadRequest(
         @NotNull @Positive Long totalSize,
         @NotBlank String contentType,
         String encryptedKey,
-        String iv
+        String iv,
+        Integer totalParts
 ) {
 }
