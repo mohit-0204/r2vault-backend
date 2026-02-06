@@ -11,8 +11,13 @@ import org.springframework.context.annotation.Configuration;
 import java.net.URI;
 
 /**
- * Configuration for the AWS S3 (Cloudflare R2) client bean.
- * Uses {@link R2Properties} for its settings.
+ * Configuration class for the S3-compatible client.
+ * <p>
+ * This class exposes an {@link S3Client} bean configured to communicate with
+ * Cloudflare R2 storage. It leverages {@link R2Properties} for endpoint and
+ * credential injection.
+ *
+ * @see R2Properties
  */
 @Configuration
 @RequiredArgsConstructor

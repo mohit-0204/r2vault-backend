@@ -8,8 +8,13 @@ import org.springframework.context.annotation.Configuration;
 import javax.sql.DataSource;
 
 /**
- * Configuration for the application DataSource bean.
- * Uses {@link DataSourceProperties} for its settings.
+ * Configuration class for the primary data source.
+ * <p>
+ * This class instantiates a {@link DataSource} bean based on the validated
+ * {@link DataSourceProperties}. It ensures that the application has a reliable
+ * connection to the PostgreSQL database.
+ *
+ * @see DataSourceProperties
  */
 @Configuration
 @RequiredArgsConstructor

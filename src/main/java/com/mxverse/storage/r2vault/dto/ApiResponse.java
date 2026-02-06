@@ -7,6 +7,14 @@ import lombok.NoArgsConstructor;
 
 import java.time.LocalDateTime;
 
+/**
+ * Generic wrapper for all API responses.
+ * <p>
+ * This class provides a consistent structure for success and error messages,
+ * including a status code, human-readable message, and the actual data payload.
+ *
+ * @param <T> The type of the data payload.
+ */
 @Data
 @Builder
 @AllArgsConstructor

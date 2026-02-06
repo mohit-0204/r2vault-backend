@@ -16,6 +16,13 @@ import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.Map;
 
+/**
+ * Global exception handler that intercepts exceptions thrown by controllers.
+ * <p>
+ * This class provides a centralized mechanism for converting various exceptions
+ * (custom, framework, and external SDK) into a standardized {@link ApiResponse}
+ * format, ensuring a consistent error reporting structure for clients.
+ */
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
