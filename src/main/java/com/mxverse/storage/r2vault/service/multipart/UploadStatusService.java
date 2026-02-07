@@ -44,7 +44,7 @@ public class UploadStatusService {
 
         List<UploadedPartDto> uploadedParts = uploadedPartRepository.findAllBySessionOrderByPartNumberAsc(session)
                 .stream()
-                .map(part -> new UploadedPartDto(part.getPartNumber(), part.getSize(), part.getCreatedAt()))
+                .map(part -> new UploadedPartDto(part.getPartNumber(), part.getSize(), part.getEtag(), part.getCreatedAt()))
                 .collect(Collectors.toList());
 
         return new UploadStatusResponse(

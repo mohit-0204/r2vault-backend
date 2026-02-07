@@ -1,32 +1,30 @@
 package com.mxverse.storage.r2vault.service.file;
 
+import com.mxverse.storage.r2vault.dto.file.FileDownloadResponse;
+import com.mxverse.storage.r2vault.dto.file.FileMetadata;
+import com.mxverse.storage.r2vault.entity.FileRecord;
+import com.mxverse.storage.r2vault.entity.UploadSession;
+import com.mxverse.storage.r2vault.entity.UploadStatus;
+import com.mxverse.storage.r2vault.entity.User;
 import com.mxverse.storage.r2vault.exception.FileAccessException;
 import com.mxverse.storage.r2vault.exception.FileStorageException;
 import com.mxverse.storage.r2vault.exception.InvalidFileException;
-import com.mxverse.storage.r2vault.entity.FileRecord;
-import com.mxverse.storage.r2vault.entity.User;
-import com.mxverse.storage.r2vault.repository.file.FileRecordRepository;
-import com.mxverse.storage.r2vault.repository.auth.UserRepository;
-
-import software.amazon.awssdk.core.ResponseInputStream;
-import software.amazon.awssdk.core.sync.RequestBody;
-import software.amazon.awssdk.services.s3.S3Client;
-import software.amazon.awssdk.services.s3.model.*;
-import com.mxverse.storage.r2vault.dto.file.FileDownloadResponse;
-import com.mxverse.storage.r2vault.dto.file.FileMetadata;
 import com.mxverse.storage.r2vault.exception.QuotaExceededException;
+import com.mxverse.storage.r2vault.repository.auth.UserRepository;
+import com.mxverse.storage.r2vault.repository.file.FileRecordRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
+import software.amazon.awssdk.core.ResponseInputStream;
+import software.amazon.awssdk.core.sync.RequestBody;
+import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.model.*;
 
 import java.io.IOException;
-import java.util.Comparator;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
@@ -292,6 +290,7 @@ public class FileService {
      * @param keys   A list of S3 keys to be deleted.
      * @param userId The user ID requesting the deletion.
      */
+    @Transactional
     public void deleteFiles(List<String> keys, String userId) {
         List<String> userKeys = keys.stream()
                 .filter(key -> key.startsWith("users/" + userId + "/"))
@@ -316,7 +315,34 @@ public class FileService {
         s3Client.deleteObjects(deleteRequest);
 
         // Batch delete from DB as well
-        userKeys.forEach(fileRecordRepository::deleteByS3Key);
+        // Abort any ongoing multipart uploads for these files to free up S3 space immediately
+        List<FileRecord> records = userKeys.stream()
+                .map(fileRecordRepository::findByS3Key)
+                .filter(Optional::isPresent)
+                .map(Optional::get)
+                .toList();
+
+        for (FileRecord record : records) {
+            if (record.getUploadSessions() != null) {
+                for (UploadSession session : record.getUploadSessions()) {
+                    if (session.getStatus() == UploadStatus.INITIATED ||
+                            session.getStatus() == UploadStatus.IN_PROGRESS) {
+                        try {
+                            log.info("Aborting orphaned multipart upload {} for file {}", session.getUploadId(), record.getS3Key());
+                            AbortMultipartUploadRequest abortRequest = AbortMultipartUploadRequest.builder()
+                                    .bucket(bucketName)
+                                    .key(record.getS3Key())
+                                    .uploadId(session.getUploadId())
+                                    .build();
+                            s3Client.abortMultipartUpload(abortRequest);
+                        } catch (Exception e) {
+                            log.warn("Failed to abort multipart upload during deletion: {}", e.getMessage());
+                        }
+                    }
+                }
+            }
+            fileRecordRepository.delete(record);
+        }
     }
 
     /**

@@ -20,5 +20,4 @@ public interface FileRecordRepository extends JpaRepository<FileRecord, String> 
 
     List<FileRecord> findAllByUser(User user);
 
-    void deleteByS3Key(String s3Key);
 }

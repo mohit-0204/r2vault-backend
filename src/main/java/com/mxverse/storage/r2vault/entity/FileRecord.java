@@ -7,6 +7,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.time.Instant;
+import java.util.List;
 
 /**
  * Entity representing a file stored in the R2 bucket.
@@ -52,6 +53,9 @@ public class FileRecord {
 
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
+
+    @OneToMany(mappedBy = "fileRecord", cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<UploadSession> uploadSessions;
 
     @PrePersist
     protected void onCreate() {
