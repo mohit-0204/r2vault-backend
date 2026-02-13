@@ -71,11 +71,16 @@ public class FileController {
      * @return ResponseEntity containing the file stream as an attachment.
      */
     @GetMapping("/download")
-    public ResponseEntity<InputStreamResource> download(@RequestParam @NotBlank String key, Principal principal) {
-        FileDownloadResponse response = fileService.downloadFile(key, principal.getName());
+    public ResponseEntity<InputStreamResource> download(
+            @RequestParam @NotBlank String key,
+            @RequestHeader(value = HttpHeaders.RANGE, required = false) String range,
+            Principal principal) {
+        FileDownloadResponse response = fileService.downloadFile(key, principal.getName(), range);
         InputStreamResource resource = new InputStreamResource(response.inputStream());
 
-        return ResponseEntity.ok()
+        HttpStatus status = (range != null) ? HttpStatus.PARTIAL_CONTENT : HttpStatus.OK;
+
+        return ResponseEntity.status(status)
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + response.fileName() + "\"")
                 .contentType(MediaType.parseMediaType(response.contentType()))
                 .contentLength(response.size())

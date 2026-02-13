@@ -163,16 +163,19 @@ public class FileService {
      * @param userId The user ID requesting the file.
      * @return A FileDownloadResponse containing the stream and metadata.
      */
-    public FileDownloadResponse downloadFile(String key, String userId) {
+    public FileDownloadResponse downloadFile(String key, String userId, String range) {
         validateOwnership(key, userId);
-        log.info("Downloading file from R2: bucket={}, key={}", bucketName, key);
+        log.info("Downloading file from R2: bucket={}, key={}, range={}", bucketName, key, range);
 
-        GetObjectRequest getRequest = GetObjectRequest.builder()
+        GetObjectRequest.Builder getRequestBuilder = GetObjectRequest.builder()
                 .bucket(bucketName)
-                .key(key)
-                .build();
+                .key(key);
 
-        ResponseInputStream<GetObjectResponse> s3Response = s3Client.getObject(getRequest);
+        if (range != null) {
+            getRequestBuilder.range(range);
+        }
+
+        ResponseInputStream<GetObjectResponse> s3Response = s3Client.getObject(getRequestBuilder.build());
         GetObjectResponse metadata = s3Response.response();
 
         String originalFilename = metadata.metadata().get("original-filename");
