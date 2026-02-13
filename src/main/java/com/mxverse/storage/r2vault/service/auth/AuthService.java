@@ -97,7 +97,7 @@ public class AuthService {
      * @param request the AuthRequest obj containing username and pass
      * @return A TokenResponse containing the JWT access token and refresh token.
      */
-    @Transactional
+    @Transactional(noRollbackFor = DeviceLimitExceededException.class)
     public TokenResponse login(AuthRequest request) {
         Authentication authentication = authenticationManager.authenticate(
                 new UsernamePasswordAuthenticationToken(request.username(), request.password()));
