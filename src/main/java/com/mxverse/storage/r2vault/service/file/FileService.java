@@ -173,6 +173,7 @@ public class FileService {
 
         if (range != null) {
             getRequestBuilder.range(range);
+            log.debug("Applying range header to S3 request: {}", range);
         }
 
         ResponseInputStream<GetObjectResponse> s3Response = s3Client.getObject(getRequestBuilder.build());
@@ -187,7 +188,8 @@ public class FileService {
                 s3Response,
                 originalFilename,
                 metadata.contentType(),
-                metadata.contentLength());
+                metadata.contentLength(),
+                metadata.contentRange());
     }
 
     /**

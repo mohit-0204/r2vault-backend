@@ -78,9 +78,13 @@ public class FileController {
         FileDownloadResponse response = fileService.downloadFile(key, principal.getName(), range);
         InputStreamResource resource = new InputStreamResource(response.inputStream());
 
-        HttpStatus status = (range != null) ? HttpStatus.PARTIAL_CONTENT : HttpStatus.OK;
+        ResponseEntity.BodyBuilder status = ResponseEntity.status(range != null ? HttpStatus.PARTIAL_CONTENT : HttpStatus.OK);
 
-        return ResponseEntity.status(status)
+        if (response.contentRange() != null) {
+            status.header(HttpHeaders.CONTENT_RANGE, response.contentRange());
+        }
+
+        return status
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + response.fileName() + "\"")
                 .contentType(MediaType.parseMediaType(response.contentType()))
                 .contentLength(response.size())

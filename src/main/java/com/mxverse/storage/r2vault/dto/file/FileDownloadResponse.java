@@ -9,5 +9,6 @@ public record FileDownloadResponse(
         InputStream inputStream,
         String fileName,
         String contentType,
-        long size) {
+        long size,
+        String contentRange) {
 }
