@@ -33,7 +33,7 @@ public class FileRecord {
     @Column(name = "s3_key", nullable = false, unique = true)
     private String s3Key;
 
-    @Column(name = "original_filename", nullable = false)
+    @Column(name = "original_filename", nullable = false, columnDefinition = "TEXT")
     private String originalFilename;
 
     @Column(name = "size", nullable = false)

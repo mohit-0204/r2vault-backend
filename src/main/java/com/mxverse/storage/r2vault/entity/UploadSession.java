@@ -35,7 +35,7 @@ public class UploadSession {
     @JoinColumn(name = "file_record_id", nullable = false)
     private FileRecord fileRecord;
 
-    @Column(name = "upload_id", nullable = false)
+    @Column(name = "upload_id", nullable = false, columnDefinition = "TEXT")
     private String uploadId; // S3/R2 Upload ID
 
     @Column(name = "part_size", nullable = false)
