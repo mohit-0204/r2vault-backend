@@ -15,10 +15,8 @@ import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.AbortMultipartUploadRequest;
 
 /**
- * Service for aborting an ongoing multipart upload session.
- * <p>
- * It notifies Cloudflare R2 to discard uploaded parts and cleans up
- * local session state and reserved quota.
+ * Handles aborting multipart upload sessions — notifies R2 to discard
+ * uploaded parts and releases the user's quota reservation.
  */
 @Service
 @RequiredArgsConstructor
@@ -32,6 +30,7 @@ public class UploadAbortService {
     @Value("${r2.bucket}")
     private String bucketName;
 
+    /** User-facing abort — validates that the session belongs to {@code username} before aborting. */
     @Transactional
     public void abortUpload(String username, String sessionId) {
         UploadSession session = uploadSessionRepository.findById(sessionId)
@@ -45,16 +44,26 @@ public class UploadAbortService {
             return;
         }
 
-        // 1. Cleanup DB state first (Race protection)
+        doAbort(session);
+    }
+
+    /** System-facing abort — skips ownership validation; caller guarantees the session is eligible. */
+    @Transactional
+    public void abortSessionForCleanup(UploadSession session) {
+        if (session.getStatus() == UploadStatus.COMPLETED || session.getStatus() == UploadStatus.ABORTED) {
+            log.debug("Session {} is already in a terminal state ({}), skipping cleanup.",
+                    session.getId(), session.getStatus());
+            return;
+        }
+        doAbort(session);
+    }
+
+    private void doAbort(UploadSession session) {
+        // Mark ABORTED before touching R2 — keeps DB consistent if the R2 call fails.
         session.setStatus(UploadStatus.ABORTED);
         uploadSessionRepository.save(session);
 
-        // Release ongoing quota reservation
-        fileService.decrementOngoingUpload(username, session.getTotalSize());
-
-        // 2. Abort in R2 (outside of main TX if possible, but here it's still in @Transactional)
-        // Note: S3 abort is a cleanup operation, so we do it after committing the status if we want to be safe.
-        // However, if R2 fail, we still want the status to be ABORTED.
+        fileService.decrementOngoingUpload(session.getUser().getUsername(), session.getTotalSize());
 
         AbortMultipartUploadRequest abortRequest = AbortMultipartUploadRequest.builder()
                 .bucket(bucketName)
@@ -62,11 +71,11 @@ public class UploadAbortService {
                 .uploadId(session.getUploadId())
                 .build();
 
-        log.info("Aborting multipart upload for session {} in R2", sessionId);
+        log.info("Aborting multipart upload for session {} in R2", session.getId());
         try {
             s3Client.abortMultipartUpload(abortRequest);
         } catch (Exception e) {
-            log.warn("Failed to abort multipart upload in R2 for session {}: {}", sessionId, e.getMessage());
+            log.warn("Failed to abort multipart upload in R2 for session {}: {}", session.getId(), e.getMessage());
         }
     }
 }

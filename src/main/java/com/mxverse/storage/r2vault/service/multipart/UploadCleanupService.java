@@ -7,15 +7,14 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.util.List;
 
 /**
- * Background service for cleaning up abandoned or expired multipart upload sessions.
- * <p>
- * Helps maintain storage hygiene and accurate quota records by identifying
- * and aborting sessions that have exceeded their time-to-live.
+ * Background service that cleans up abandoned or expired multipart upload sessions,
+ * maintaining storage hygiene and accurate quota records.
  */
 @Service
 @RequiredArgsConstructor
@@ -25,26 +24,23 @@ public class UploadCleanupService {
     private final UploadSessionRepository uploadSessionRepository;
     private final UploadAbortService uploadAbortService;
 
-    /**
-     * Runs every hour to clean up expired upload sessions.
-     * R2 keeps multipart uploads for 7 days by default.
-     */
+    /** Statuses that are still active and therefore abortable. */
+    private static final List<UploadStatus> ABORTABLE_STATUSES =
+            List.of(UploadStatus.INITIATED, UploadStatus.IN_PROGRESS);
+
     @Scheduled(fixedRate = 3600000) // 1 hour
+    @Transactional
     public void cleanupExpiredSessions() {
         log.info("Starting cleanup of expired upload sessions...");
 
-        List<UploadSession> expiredSessions = uploadSessionRepository
-                .findAllByStatusAndExpiresAtBefore(UploadStatus.INITIATED, Instant.now());
-
-        expiredSessions.addAll(uploadSessionRepository
-                .findAllByStatusAndExpiresAtBefore(UploadStatus.IN_PROGRESS, Instant.now()));
+        List<UploadSession> expiredSessions =
+                uploadSessionRepository.findExpiredSessionsWithAssociations(ABORTABLE_STATUSES, Instant.now());
 
         log.info("Found {} expired sessions to cleanup", expiredSessions.size());
 
         for (UploadSession session : expiredSessions) {
             try {
-                // We reuse the abort logic which handles R2 and DB status
-                uploadAbortService.abortUpload(session.getUser().getUsername(), session.getId());
+                uploadAbortService.abortSessionForCleanup(session);
                 log.info("Successfully cleaned up expired session: {}", session.getId());
             } catch (Exception e) {
                 log.error("Failed to cleanup expired session {}: {}", session.getId(), e.getMessage());
